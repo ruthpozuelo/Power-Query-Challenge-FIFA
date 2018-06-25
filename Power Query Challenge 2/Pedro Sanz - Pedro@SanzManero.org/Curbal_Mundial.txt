@@ -1,4 +1,0 @@
-Hola Ruth, 
-soy Pedro desde Madrid, te adjunto mi solución; he utilizado R con una librería para leer pdfs y con regular expresions para hacer una primera limpieza de datos. Espero que la solución sea válida (acabo de empezar a aprender R y ya le he dado un primer uso práctico :-))
-
-Mi correo es Pedro@SanzManero.org
