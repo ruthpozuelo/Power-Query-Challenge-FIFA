@@ -1,0 +1,105 @@
+Shilon 9  street, Haifa, Israel 
+Postal Code- 3298008
+
+
+function
+-----
+let func =  
+(pdf as text, optional ByPage as number, optional ownerPW, optional userPW) as table =>
+let
+    opw = if List.Contains({null, ""}, ownerPW) then """" else """"&ownerPW&"",
+    upw = if List.Contains({null, ""}, userPW) then """" else """"&userPW&"",
+    turnSlashes = Text.Replace(pdf, "\", "/"),
+    queryString = """"& turnSlashes & """, opw = "&opw&""", upw = "&upw&"""",
+    RunRScript = R.Execute("# 'dataset' holds the input data for this script#(lf)output <- data.frame(pdftools::pdf_text("&queryString&"))"),
+    output = RunRScript{[Name="output"]}[Value],
+    DemoteHeaders = Table.DemoteHeaders(output),
+    RemoveOldHeader = Table.Skip(DemoteHeaders,1),
+    AddPageIndex = Table.AddIndexColumn(RemoveOldHeader, "PageIndex", 1, 1),
+    TransformTextToRows = Table.TransformColumns(AddPageIndex,{{"Column1", each List.Transform(Text.Split(_, "#(lf)"), Text.Clean)}}),
+    ExpandRows = Table.ExpandListColumn(TransformTextToRows, "Column1"),
+    AddRowIndex = Table.AddIndexColumn(ExpandRows, "RowIndex", 1, 1),
+    Result = if List.Contains({null, "",0}, ByPage) then AddPageIndex else AddRowIndex
+in
+    Result
+, documentation = [
+Documentation.Name =  " ImportPdfText_R
+", Documentation.Description = " R script to import text from a pdf file. Returns a table with one row per page.
+" , Documentation.LongDescription = " R script to import text from a pdf file. Returns a table with one row per page by default. Using 1 in the second optional parameter will return one row per line of text instead with matching indices.
+", Documentation.Category = " Accessing data functions
+", Documentation.Source = " http://wp.me/p6lgsG-M3  .
+", Documentation.Author = " Imke Feldmann: www.TheBIccountant.com .
+", Documentation.Examples = {[Description =  " 
+" , Code = " 
+ ", Result = " 
+"]}] 
+ in 
+  Value.ReplaceType(func, Value.ReplaceMetadata(Value.Type(func), documentation))
+  
+  
+  
+  
+ QUERY
+ -----
+ let
+    Source = Folder.Files("C:\Users\robinson.nir\Desktop\pdf"),
+    #"Filtered Rows" = Table.SelectRows(Source, each ([Extension] = ".pdf")),
+    #"Added Custom" = Table.AddColumn(#"Filtered Rows", "Custom", each [Folder Path]&[Name]),
+    #"Removed Other Columns" = Table.SelectColumns(#"Added Custom",{"Custom"}),
+    #"Invoked Custom Function" = Table.AddColumn(#"Removed Other Columns", "Custom.1", each ImportPDF([Custom], 1, null, null)),
+    #"Expanded Custom.1" = Table.ExpandTableColumn(#"Invoked Custom Function", "Custom.1", {"Column1", "PageIndex", "RowIndex"}, {"Custom.1.Column1", "Custom.1.PageIndex", "Custom.1.RowIndex"}),
+    #"Removed Columns" = Table.RemoveColumns(#"Expanded Custom.1",{"Custom"}),
+    #"Trimmed Text" = Table.TransformColumns(#"Removed Columns",{{"Custom.1.Column1", Text.Trim, type text}}),
+    #"Split Column by Delimiter" = Table.SplitColumn(#"Trimmed Text", "Custom.1.Column1", Splitter.SplitTextByEachDelimiter({" "}, QuoteStyle.Csv, false), {"Custom.1.Column1.1", "Custom.1.Column1.2"}),
+    #"Filtered Rows1" = Table.SelectRows(#"Split Column by Delimiter", each not Text.Contains([Custom.1.Column1.1], "DOB")),
+    #"Filtered Rows2" = Table.SelectRows(#"Filtered Rows1", each not Text.Contains([Custom.1.Column1.1], "FIFA")),
+    #"Filtered Rows3" = Table.SelectRows(#"Filtered Rows2", each ([Custom.1.Column1.1] <> "")),
+    #"Filtered Rows4" = Table.SelectRows(#"Filtered Rows3", each not Text.Contains([Custom.1.Column1.1], "List")),
+    #"Filtered Rows5" = Table.SelectRows(#"Filtered Rows4", each not Text.Contains([Custom.1.Column1.1], "Thursday")),
+    #"Filtered Rows6" = Table.SelectRows(#"Filtered Rows5", each ([Custom.1.Column1.1] <> "#")),
+    #"Inserted Text Length" = Table.AddColumn(#"Filtered Rows6", "Length", each Text.Length([Custom.1.Column1.1]), Int64.Type),
+    #"Added Custom1" = Table.AddColumn(#"Inserted Text Length", "Coach", each if [Custom.1.Column1.1] = "Coach:" then [Custom.1.Column1.2] else null , type text),
+    #"Filled Up" = Table.FillUp(#"Added Custom1",{"Coach"}),
+    #"Filtered Rows7" = Table.SelectRows(#"Filled Up", each ([Custom.1.Column1.1] <> "Coach:")),
+    #"Added Custom2" = Table.AddColumn(#"Filtered Rows7", "Country", each if [Length] > 2 then [Custom.1.Column1.1] else null , type text),
+    #"Filled Down" = Table.FillDown(#"Added Custom2",{"Country"}),
+    #"Filtered Rows8" = Table.SelectRows(#"Filled Down", each ([Custom.1.Column1.1] <> "184" and [Custom.1.Column1.1] <> "187") and ([Length] = 1 or [Length] = 2)),
+    #"Renamed Columns" = Table.RenameColumns(#"Filtered Rows8",{{"Custom.1.Column1.1", "PlayerID"}}),
+
+
+    #"Split Column by Delimiter99" = Table.SplitColumn(#"Renamed Columns", "Custom.1.Column1.2", Splitter.SplitTextByEachDelimiter({" "}, QuoteStyle.Csv, true), {"Custom.1.Column1.2.1", "Custom.1.Column1.2.2"}),
+    #"Split Column by Delimiter1" = Table.SplitColumn(#"Split Column by Delimiter99", "Custom.1.Column1.2.1", Splitter.SplitTextByEachDelimiter({"("}, QuoteStyle.Csv, true), {"Custom.1.Column1.2.1.1", "Custom.1.Column1.2.1.2"}),
+    #"Split Column by Delimiter2" = Table.SplitColumn(#"Split Column by Delimiter1", "Custom.1.Column1.2.1.1", Splitter.SplitTextByEachDelimiter({"."}, QuoteStyle.Csv, true), {"Custom.1.Column1.2.1.1.1", "Custom.1.Column1.2.1.1.2"}),
+    #"Split Column by Delimiter3" = Table.SplitColumn(#"Split Column by Delimiter2", "Custom.1.Column1.2.1.1.2", Splitter.SplitTextByEachDelimiter({" "}, QuoteStyle.Csv, false), {"Custom.1.Column1.2.1.1.2.1", "Custom.1.Column1.2.1.1.2.2"}),
+    #"Split Column by Delimiter4" = Table.SplitColumn(#"Split Column by Delimiter3", "Custom.1.Column1.2.1.1.2.2", Splitter.SplitTextByEachDelimiter({" "}, QuoteStyle.Csv, false), {"Custom.1.Column1.2.1.1.2.2.1", "Custom.1.Column1.2.1.1.2.2.2"}),
+    #"Split Column by Delimiter5" = Table.SplitColumn(#"Split Column by Delimiter4", "Custom.1.Column1.2.1.1.1", Splitter.SplitTextByEachDelimiter({" "}, QuoteStyle.Csv, true), {"Custom.1.Column1.2.1.1.1.1", "Custom.1.Column1.2.1.1.1.2"}),
+    #"Split Column by Delimiter6" = Table.SplitColumn(#"Split Column by Delimiter5", "Custom.1.Column1.2.1.1.1.2", Splitter.SplitTextByEachDelimiter({"."}, QuoteStyle.Csv, false), {"Custom.1.Column1.2.1.1.1.2.1", "Custom.1.Column1.2.1.1.1.2.2"}),
+    #"Split Column by Delimiter7" = Table.SplitColumn(#"Split Column by Delimiter6", "Custom.1.Column1.2.1.1.1.1", Splitter.SplitTextByEachDelimiter({" "}, QuoteStyle.Csv, false), {"Custom.1.Column1.2.1.1.1.1.1", "Custom.1.Column1.2.1.1.1.1.2"}),
+    #"Trimmed Text99" = Table.TransformColumns(#"Split Column by Delimiter7",{{"Custom.1.Column1.2.1.1.1.1.2", Text.Trim, type text}}),
+    #"Split Column by Delimiter8" = Table.SplitColumn(#"Trimmed Text99", "Custom.1.Column1.2.1.1.1.1.2", Splitter.SplitTextByEachDelimiter({"  "}, QuoteStyle.Csv, false), {"Custom.1.Column1.2.1.1.1.1.2.1", "Custom.1.Column1.2.1.1.1.1.2.2"}),
+    #"Trimmed Text1" = Table.TransformColumns(#"Split Column by Delimiter8",{{"Custom.1.Column1.2.1.1.1.1.2.2", Text.Trim, type text}}),
+    #"Split Column by Delimiter9" = Table.SplitColumn(#"Trimmed Text1", "Custom.1.Column1.2.1.1.1.1.2.2", Splitter.SplitTextByEachDelimiter({"  "}, QuoteStyle.Csv, false), {"Custom.1.Column1.2.1.1.1.1.2.2.1", "Custom.1.Column1.2.1.1.1.1.2.2.2"}),
+    #"Trimmed Text2" = Table.TransformColumns(#"Split Column by Delimiter9",{{"Custom.1.Column1.2.1.1.1.1.2.2.2", Text.Trim, type text}}),
+    #"Split Column by Delimiter10" = Table.SplitColumn(#"Trimmed Text2", "Custom.1.Column1.2.1.1.1.1.2.2.2", Splitter.SplitTextByEachDelimiter({" "}, QuoteStyle.Csv, true), {"Custom.1.Column1.2.1.1.1.1.2.2.2.1", "Custom.1.Column1.2.1.1.1.1.2.2.2.2"}),
+    #"Merged Columns" = Table.CombineColumns(#"Split Column by Delimiter10",{"Custom.1.Column1.2.1.1.1.1.1", "Custom.1.Column1.2.1.1.1.1.2.1"},Combiner.CombineTextByDelimiter(" ", QuoteStyle.None),"Display Name"),
+    #"Renamed Columns99" = Table.RenameColumns(#"Merged Columns",{{"Custom.1.Column1.2.1.1.1.1.2.2.1", "Last Name"}, {"Custom.1.Column1.2.1.1.1.1.2.2.2.1", "First Name"}, {"Custom.1.Column1.2.1.1.1.1.2.2.2.2", "Shirt Name"}}),
+    #"Merged Columns1" = Table.CombineColumns(Table.TransformColumnTypes(#"Renamed Columns99", {{"Custom.1.Column1.2.1.1.1.2.1", type text}, {"Custom.1.Column1.2.1.1.1.2.2", type text}, {"Custom.1.Column1.2.1.1.2.1", type text}}, "he-IL"),{"Custom.1.Column1.2.1.1.1.2.1", "Custom.1.Column1.2.1.1.1.2.2", "Custom.1.Column1.2.1.1.2.1"},Combiner.CombineTextByDelimiter(".", QuoteStyle.None),"DOB"),
+    #"Removed Errors" = Table.RemoveRowsWithErrors(#"Merged Columns1", {"PlayerID"}),
+    #"Removed Errors1" = Table.RemoveRowsWithErrors(#"Removed Errors", {"DOB"}),
+    #"Renamed Columns1" = Table.RenameColumns(#"Removed Errors1",{{"Custom.1.Column1.2.1.1.2.2.1", "POS"}, {"Custom.1.Column1.2.1.1.2.2.2", "Club"}, {"Custom.1.Column1.2.1.2", "Club Country"}}),
+    #"Replaced Value" = Table.ReplaceValue(#"Renamed Columns1",")","",Replacer.ReplaceText,{"Club Country"}),
+    #"Renamed Columns2" = Table.RenameColumns(#"Replaced Value",{{"Custom.1.Column1.2.2", "Height"}, {"Custom.1.PageIndex", "Pdf.Page"}, {"Custom.1.RowIndex", "Pdf,Row"}}),
+    #"Removed Columns99" = Table.RemoveColumns(#"Renamed Columns2",{"Length"}),
+    #"Removed Errors2" = Table.RemoveRowsWithErrors(#"Removed Columns99", {"Height"}),
+    #"Replaced Value1" = Table.ReplaceValue(#"Removed Errors2","Mohammad","Saudi Arabia",Replacer.ReplaceText,{"Country"}),
+    #"Replaced Value2" = Table.ReplaceValue(#"Replaced Value1","184","Korea",Replacer.ReplaceText,{"Country"}),
+    #"Replaced Value3" = Table.ReplaceValue(#"Replaced Value2","Ahmed","Egypt",Replacer.ReplaceText,{"Country"}),
+    #"Replaced Value4" = Table.ReplaceValue(#"Replaced Value3","Muhannad","Saudi Arabia",Replacer.ReplaceText,{"Country"}),
+    #"Replaced Value5" = Table.ReplaceValue(#"Replaced Value4",".","/",Replacer.ReplaceText,{"DOB"}),
+    #"Changed Type" = Table.TransformColumnTypes(#"Replaced Value5",{{"DOB", type date}, {"Height", Int64.Type}, {"Pdf,Row", Int64.Type}, {"Pdf.Page", Int64.Type}}),
+    #"Replaced Errors" = Table.ReplaceErrorValues(#"Changed Type", {{"DOB", null}}),
+    #"Replaced Errors1" = Table.ReplaceErrorValues(#"Replaced Errors", {{"Height", null}}),
+    #"Replaced Value6" = Table.ReplaceValue(#"Replaced Errors1","Clube","Uruguay",Replacer.ReplaceText,{"Country"}),
+    #"Replaced Value7" = Table.ReplaceValue(#"Replaced Value6","Guangzhou","Korea",Replacer.ReplaceText,{"Country"})
+in
+    #"Replaced Value7"

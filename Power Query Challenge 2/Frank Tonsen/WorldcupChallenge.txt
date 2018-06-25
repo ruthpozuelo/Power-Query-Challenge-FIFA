@@ -1,0 +1,106 @@
+﻿
+let
+	FetchText = (pdf as text, optional byPage as logical, optional ownerPW, optional userPW) as table =>
+	let
+		ByPage = if byPage = null then true else byPage,
+		opw = if List.Contains({null, ""}, ownerPW) then """" else """" & ownerPW & "",
+		upw = if List.Contains({null, ""}, userPW) then """" else """"& userPW & "",
+		turnSlashes = Text.Replace(pdf, "\", "/"),
+		PDF = """" & turnSlashes & """, opw = " & opw & """, upw = " & upw & """",
+		RunRScript = R.Execute("output <- data.frame(pdftools::pdf_text(" & PDF & "))"),
+		output = RunRScript{[Name="output"]}[Value],
+		DemoteHeaders = Table.DemoteHeaders(output),
+		RemoveOldHeader = Table.Skip(DemoteHeaders,1),
+		AddPageIndex = Table.AddIndexColumn(RemoveOldHeader, "PageIndex", 1, 1),
+		TransformTextToRows = Table.TransformColumns(AddPageIndex,{{"Column1", each List.Transform(Text.Split(_, "#(lf)"), Text.Clean)}}),
+		ExpandRows = Table.ExpandListColumn(TransformTextToRows, "Column1"),
+		AddRowIndex = Table.AddIndexColumn(ExpandRows, "RowIndex", 1, 1),
+		Result = if ByPage = true then AddPageIndex else AddRowIndex
+	in
+		Result,
+		
+	Switch = (value as any, valueList as list, returnList as list, optional caseSensitive as nullable logical, optional default as any) as any =>
+	let
+		caseSensivity = if caseSensitive = null then false else caseSensitive,
+		valueCase = if Value.Is(value, type number) then Text.From(value) else if caseSensivity then value else Text.Lower(value), 
+		valueListCase = if caseSensivity then valueList else List.Transform(valueList, each Text.Lower(Text.From(_))),
+		T = Table.FromColumns({valueListCase, returnList}),
+		LoL = Table.ToRows(T),
+		result = try List.First(List.Select(LoL, each _{0} = valueCase)){1} otherwise default
+	in
+		result,
+	
+	ExtractNumbers = (text as text) =>
+	let
+		step1 = Text.ToList(text),
+		step2 = List.Transform(step1, each try Number.From(_) otherwise null),
+		step3 = List.RemoveNulls(step2),
+		step4 = List.Transform(step3, each Text.From(_)),
+		step5 = Text.Combine(step4)
+	in
+		step5,
+		
+	CrossJoinCharacters =(l1 as list, l2 as list, optional withNulls as nullable logical) as list =>
+	let
+		firstList = if withNulls or withNulls = null then l1 else List.RemoveNulls(l1),
+		secondList = if withNulls or withNulls = null then l2 else List.RemoveNulls(l2),
+		firstLength = List.Count(firstList),
+		secondLength = List.Count(secondList),
+		resultFirstList = List.Generate( () => 0, each _ < firstLength * secondLength, each _ + 1,  each firstList{Number.IntegerDivide(_, secondLength)}),
+		resultSecondList = List.Repeat(secondList, firstLength),  
+		output = List.Generate( () => 0, each _ < firstLength * secondLength, each _ + 1,  each  resultFirstList{_} & resultSecondList{_})
+	in
+		output,
+		
+	SpecialReplacement = (Text as text) as text =>
+	List.Accumulate(CrossJoinCharacters(List.Transform({"A".."Z","Ö","Ü","Ä","Á","Ć","É","Ó","Ú","Ø","Æ","Ž"}, each " " & _), {"A".."Z","Ö","Ü","Ä","Á","Ć","É","Ó","Ú","Ø","Æ","Ž","."," "}), Text, (state, current) => Text.Replace(state, current, "|")),
+		
+    Source = FetchText("C:\Users\Frank\Shared\Excel\Power BI\Worldcup 2018.pdf", false, null, null),
+    FilteredOutHeadersFooters = Table.SelectRows(Source, each not Text.Contains([Column1], "List of Players") and not Text.Contains([Column1], "FIFA World Cup Russia 2018") and not Text.Contains([Column1], "DOB:") and not Text.Contains([Column1], "day ")),
+    
+    // Some rows were not imported correctly
+    FilteredOutNullsAndErrors = Table.SelectRows(FilteredOutHeadersFooters, each ([Column1] <> null and [Column1] <> "") and ([RowIndex] <> 260 and [RowIndex] <> 490 and [RowIndex] <> 492 and [RowIndex] <> 764 and [RowIndex] <> 774 and [RowIndex] <> 995 and [RowIndex] <> 997)),
+    ReplacedError1 = Table.ReplaceValue(FilteredOutNullsAndErrors,"  19 KIM Younggwon                KIM                                                Younggwon            Y G KIM    27.02.1990 DF  (CHN)","  19 KIM Younggwon                KIM                                                Younggwon            Y G KIM    27.02.1990 DF  Guangzhou Evergrande Taobao FC (CHN)	184",Replacer.ReplaceText,{"Column1"}),
+    ReplacedError2 = Table.ReplaceValue(ReplacedError1,"  10 MOHAMMED ALSAHLAWI           ALSAHLAWI                                          Mohammed Ibrahim      ALSAHLAWI  10.01.1987 FW  Al Nasr (KSA)        179","  10 MOHAMMED ALSAHLAWI           ALSAHLAWI                                          Mohammed Ibrahim Mohammed      ALSAHLAWI  10.01.1987 FW  Al Nasr (KSA)        179",Replacer.ReplaceText,{"Column1"}),
+    ReplacedError3 = Table.ReplaceValue(ReplacedError2,"  20 MUHANNAD ASIRI               ASIRI                                              Radiyah               MUHANNAD   14.10.1986 FW  Al Ahli (KSA)        185","  20 MUHANNAD ASIRI               ASIRI                                              Muhannad Ahmed Abu Radiyah               MUHANNAD   14.10.1986 FW  Al Ahli (KSA)        185",Replacer.ReplaceText,{"Column1"}),
+    ReplacedError4 = Table.ReplaceValue(ReplacedError3,"  23 Martin SILVA                 SILVA LEITES                                       Martin Andres        M. SILVA         25.03.1983 GK  (BRA)"," 23 Martin SILVA                 SILVA LEITES                                       Martin Andres        M. SILVA         25.03.1983 GK    Clube de Regatas Vasco da Gama (BRA)#(tab)187",Replacer.ReplaceText,{"Column1"}),
+    ReplacedError5 = Table.ReplaceValue(ReplacedError4,"   7 AHMED FATHI                  IBRAHIM                                            Ahmed Fathy Abdelmonem    A. FATHI     10.11.1984 DF  Al Ahly Cairo (EGY)              176","   7 AHMED FATHI                  IBRAHIM                                            Ahmed Fathy Abdelmonem Ahmed    A. FATHI     10.11.1984 DF  Al Ahly Cairo (EGY)              176",Replacer.ReplaceText,{"Column1"}),
+    
+    AddedCountry = Table.AddColumn(ReplacedError5, "Country", each if Text.StartsWith([Column1],"    ") then [Column1] else null),
+    FilledDown = Table.FillDown(AddedCountry,{"Country"}),
+    AddedCoach = Table.AddColumn(FilledDown, "Coach", each if Text.Contains([Column1],"Coach:") then [Column1] else null),
+    FilledUp = Table.FillUp(AddedCoach,{"Coach"}),
+    ReplacedValue = Table.ReplaceValue(FilledUp,"Coach:","",Replacer.ReplaceText,{"Coach"}),
+    PromotedHeaders = Table.PromoteHeaders(ReplacedValue, [PromoteAllScalars=true]),
+    RenamedColumns = Table.RenameColumns(PromotedHeaders,{{"                                                                                                Argentina", "Rest"}, {"1", "PageNumber"}, {"3", "RowNumber"}, {"                                                                                                Argentina_1", "Team"}, {"  Jorge SAMPAOLI (ARG)", "Coach"}}),
+    FilteredRows = Table.SelectRows(RenamedColumns, each not Text.Contains([Rest], "#") and not Text.Contains([Rest], "Coach:") and not Text.StartsWith([Rest],"    ")),
+    SplitRestByPositions1 = Table.SplitColumn(FilteredRows, "Rest", Splitter.SplitTextByPositions({0, 4, 33, 84}, false), {"Number", "FIFA Display Name", "Last Name", "Rest"}),
+    SplitRestByPositions2 = Table.SplitColumn(SplitRestByPositions1, "Rest", Splitter.SplitTextByPositions({0, 3}, true), {"Rest", "Height"}),
+    
+    // Unfortunately, other positions are distorted
+    SplitRestByOpeningBracket = Table.SplitColumn(SplitRestByPositions2, "Rest", Splitter.SplitTextByEachDelimiter({" ("}, QuoteStyle.Csv, true), {"Rest", "Country of Club"}),
+    ReplacedClosingBracket = Table.ReplaceValue(SplitRestByOpeningBracket,")","",Replacer.ReplaceText,{"Country of Club"}),
+
+    // the tricky part
+    ExtractedNumbers = Table.AddColumn(ReplacedClosingBracket, "Numbers", each ExtractNumbers([Rest])),
+    SplitNumbersByPosition = Table.SplitColumn(ExtractedNumbers, "Numbers", Splitter.SplitTextByPositions({0, 8}, false), {"Numbers"}),
+    NumbersToDate = Table.TransformColumns(SplitNumbersByPosition,{{"Numbers", each Text.Insert(Text.Insert(_,2,"."),5,"."), type text}}),
+    RenamedToDOB = Table.RenameColumns(NumbersToDate,{{"Numbers", "DOB"}}),
+    AddedTextAfterDOB = Table.AddColumn(RenamedToDOB, "AfterDOB", each Text.AfterDelimiter([Rest],[DOB]& " ",0)),
+    SplitColumnBySpace = Table.SplitColumn(AddedTextAfterDOB, "AfterDOB", Splitter.SplitTextByEachDelimiter({" "}, QuoteStyle.Csv, false), {"Position", "Club"}),
+    AddedTextBeforeDOB = Table.AddColumn(SplitColumnBySpace, "BeforeDOB", each Text.BeforeDelimiter([Rest],[DOB])),
+    RemovedColumnRest = Table.RemoveColumns(AddedTextBeforeDOB,{"Rest"}),
+    TrimmedAllText = Table.TransformColumns(RemovedColumnRest,{{"Number", Text.Trim, type text}, {"FIFA Display Name", Text.Trim, type text}, {"Last Name", Text.Trim, type text}, {"Country of Club", Text.Trim, type text}, {"Height", Text.Trim, type text}, {"Team", Text.Trim, type text}, {"Coach", Text.Trim, type text}, {"DOB", Text.Trim, type text}, {"Position", Text.Trim, type text}, {"Club", Text.Trim, type text}, {"BeforeDOB", Text.Trim, type text}}),
+    AddedHelper = Table.AddColumn(TrimmedAllText, "Helper", each SpecialReplacement([BeforeDOB])),
+    SplitHelperByPipe = Table.SplitColumn(AddedHelper, "Helper", Splitter.SplitTextByEachDelimiter({"|"}, QuoteStyle.Csv, false), {"First Name"}),
+    AddedShirtName = Table.AddColumn(SplitHelperByPipe, "Shirt Name", each Text.Trim(Text.AfterDelimiter([BeforeDOB],[First Name])), type text),
+    DuplicatedFirstName = Table.DuplicateColumn(AddedShirtName, "First Name", "First Name - Kopie"),
+    SplitFirstNameBySpace = Table.SplitColumn(DuplicatedFirstName, "First Name - Kopie", Splitter.SplitTextByEachDelimiter({" "}, QuoteStyle.Csv, true), {"First Name - Kopie.1", "First Name - Kopie.2"}),
+    AdjustedKoreanShirtNames = Table.ReplaceValue(SplitFirstNameBySpace, each [Shirt Name], each if [Team]="Korea Republic" then [#"First Name - Kopie.2"] & " " & [Shirt Name] else [Shirt Name],Replacer.ReplaceText,{"Shirt Name"}),
+    RemovedColumns = Table.RemoveColumns(AdjustedKoreanShirtNames,{"PageNumber", "RowNumber", "BeforeDOB", "First Name - Kopie.1", "First Name - Kopie.2"}),
+    
+    SwitchedPosition = Table.TransformColumns(RemovedColumns,{{"Position", each Switch(_, {"DF","FW","GK","MF"}, {"Defender","Forward","Goalkeeper","Midfielder"}), type text}}),
+    ReorderedColumns = Table.ReorderColumns(SwitchedPosition,{"Team", "Coach", "Number", "FIFA Display Name", "Last Name", "First Name", "Shirt Name", "DOB", "Position", "Club", "Country of Club", "Height"}),
+    ChangedType = Table.TransformColumnTypes(ReorderedColumns,{{"DOB", type date}, {"Number", Int64.Type}, {"Height", Int64.Type}})
+in
+    ChangedType
